@@ -1,4 +1,6 @@
+*.py
 *.exe
 *.out
 *.log
 *.txt
+.venv/
