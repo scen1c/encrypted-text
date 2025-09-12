@@ -1,44 +1,186 @@
 #include <iostream>
 #include <string>
-#include <sstream>  
-#include <iomanip> 
+#include <sstream>
+#include <iomanip>
+#include <fstream>
+#include <cctype>
+#include <limits>
 using namespace std;
-// Функция для преобразования строки в шестнадцатеричный формат(формат hex). Потому что шифрованный текст может содержать неотображаемые символы
+
+// ---------- utils ----------
 string to_hex(const string& s) {
     ostringstream os;
     os << hex << setfill('0');
-    for (unsigned char b : s) {
-        os << setw(2) << static_cast<int>(b) << ' ';
-    }
+    for (unsigned char b : s) os << setw(2) << static_cast<int>(b) << ' ';
     return os.str();
 }
 
-int main() {
-    string text;
-    //Возьмем только младший байт ключа от 0-255
-    unsigned int key;
+// Парсит любую строку, содержащую hex-символы (пробелы/переводы строк игнорируются)
+// "41 42 43" -> "ABC"
+string hex_to_bytes(const string& hex) {
+    auto hexval = [](char c) -> int {
+        if ('0' <= c && c <= '9') return c - '0';
+        c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+        if ('a' <= c && c <= 'f') return 10 + (c - 'a');
+        return -1;
+    };
 
-    cout << "Text: ";
-    getline(cin, text);
-
-    cout << "Key (0-255): ";
-    cin >> key;
-    // Ограничиваем ключ одним байтом (0-255) ПОлучается что 0XFF = 255 в двочиной системе равен 11111111 значит все биты единицы
-    key &= 0xFF;
-
-    // Шифруем (XOR каждый символ с ключом)
-    string enc = text;
-    for (char& c : enc) {
-    c = c ^ key;      
-}
-    cout << "Encrypted (hex): " << to_hex(enc) << "\n";
-
-    // Расшифровываем тем же ключом (XOR обратим)
-    string dec = enc;
-    for (char& c : dec) {
-        c = c ^ key;
+    string out;
+    int hi = -1;
+    for (char ch : hex) {
+        int v = hexval(ch);
+        if (v == -1) continue;            // пропускаем не-hex символы
+        if (hi < 0) hi = v;
+        else {
+            unsigned char b = static_cast<unsigned char>((hi << 4) | v);
+            out.push_back(static_cast<char>(b));
+            hi = -1;
+        }
     }
-    cout << "Decrypted: " << dec << "\n";
+    // если нечетное количество hex-цифр — последний полу-байт игнорируем
+    return out;
+}
+
+// Читает файл целиком в одну строку
+string read_file_all(const string& path) {
+    ifstream in(path);
+    if (!in) return {};
+    ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+// XOR-трансформация (и шифрование, и дешифрование)
+string xor_with_key(string data, unsigned int key) {
+    key &= 0xFF;
+    for (char& c : data) c = static_cast<char>(static_cast<unsigned char>(c) ^ key);
+    return data;
+}
+
+// ---------- app ----------
+int main() {
+    int choice;
+
+    do {
+        cout << "-------------------------------\n"
+             << "Encrypted Text Display Tool\n"
+             << "------------------------------\n"
+             << "Select an option:\n"
+             << "1) Write encrypted text\n"
+             << "2) Find decrypted text\n"
+             << "0) Exit\n"
+             << "Enter your choice (0-2): ";
+        cin >> choice;
+
+        switch (choice) {
+            case 1: {
+                string text;
+                unsigned int key;
+
+                cout << "Text: ";
+                cin.ignore(numeric_limits<streamsize>::max(), '\n'); // очистка буфера
+                getline(cin, text);
+
+                cout << "Key (0-255): ";
+                cin >> key;
+
+                string enc = xor_with_key(text, key);
+                cout << "Encrypted (hex): " << to_hex(enc) << "\n\n";
+
+                char saveChoice;
+                cout << "Do you want to save encrypted text to file? (y/n): ";
+                cin >> saveChoice;
+
+                if (saveChoice == 'y' || saveChoice == 'Y') {
+                    string filename;
+                    cout << "Write the name of this file (without extension): ";
+                    cin >> filename;
+
+                    ofstream outFile(filename + ".txt", ios::app);
+                    if (outFile) {
+                        outFile << to_hex(enc) << "\n";
+                        cout << "Encrypted text saved to " << filename << ".txt\n\n";
+                    } else {
+                        cout << "Error: could not open file for writing.\n\n";
+                    }
+                } else {
+                    cout << "Encrypted text not saved.\n\n";
+                }
+                break;
+            }
+
+            case 2: {
+                cout << "Decrypt source:\n"
+                     << "1) Enter encrypted text manually (HEX)\n"
+                     << "2) Load encrypted text from file (HEX)\n"
+                     << "Enter your choice (1-2): ";
+                int src;
+                cin >> src;
+
+                string hexInput;
+
+                if (src == 1) {
+                    cout << "Paste HEX string (example: 41 42 43 or 414243):\n";
+                    cin.ignore(numeric_limits<streamsize>::max(), '\n'); // очистка
+                    getline(cin, hexInput);
+                } else if (src == 2) {
+                    string filename;
+                    cout << "Enter file name (with or without .txt): ";
+                    cin >> filename;
+                    if (filename.size() < 4 || filename.substr(filename.size()-4) != ".txt")
+                        filename += ".txt";
+
+                    hexInput = read_file_all(filename);
+                    if (hexInput.empty()) {
+                        cout << "Error: could not read file or file is empty.\n\n";
+                        break;
+                    }
+                } else {
+                    cout << "Invalid choice.\n\n";
+                    break;
+                }
+
+                // теперь hex → байты и XOR-раскрытие ключом
+                unsigned int key;
+                cout << "Key (0-255): ";
+                cin >> key;
+
+                string cipherBytes = hex_to_bytes(hexInput);
+                if (cipherBytes.empty()) {
+                    cout << "Error: HEX input is empty or invalid.\n\n";
+                    break;
+                }
+
+                string plain = xor_with_key(cipherBytes, key);
+                cout << "Decrypted text: " << plain << "\n\n";
+
+                // опционально: сохранить результат
+                char saveChoice;
+                cout << "Save decrypted text to file? (y/n): ";
+                cin >> saveChoice;
+                if (saveChoice == 'y' || saveChoice == 'Y') {
+                    string filename;
+                    cout << "Write the name of this file (without extension): ";
+                    cin >> filename;
+                    ofstream outFile(filename + ".txt", ios::app);
+                    if (outFile) {
+                        outFile << plain << "\n";
+                        cout << "Decrypted text saved to " << filename << ".txt\n\n";
+                    } else {
+                        cout << "Error: could not open file for writing.\n\n";
+                    }
+                }
+                break;
+            }
+
+            case 0:
+                cout << "Exiting program...\n";
+                break;
+
+            default:
+                cout << "Error: invalid choice!\n\n";
+        }
+    } while (choice != 0);
 
     return 0;
 }
