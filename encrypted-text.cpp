@@ -7,7 +7,7 @@
 #include <limits>
 using namespace std;
 
-// ---------- utils ----------
+// УТИЛИТЫ
 string to_hex(const string& s) {
     ostringstream os;
     os << hex << setfill('0');
@@ -15,8 +15,8 @@ string to_hex(const string& s) {
     return os.str();
 }
 
-// Парсит любую строку, содержащую hex-символы (пробелы/переводы строк игнорируются)
-// "41 42 43" -> "ABC"
+// не мой код, но работает
+// обратное шифрование to_hex
 string hex_to_bytes(const string& hex) {
     auto hexval = [](char c) -> int {
         if ('0' <= c && c <= '9') return c - '0';
@@ -29,7 +29,7 @@ string hex_to_bytes(const string& hex) {
     int hi = -1;
     for (char ch : hex) {
         int v = hexval(ch);
-        if (v == -1) continue;            // пропускаем не-hex символы
+        if (v == -1) continue;            // пока хрен значет chat gpt
         if (hi < 0) hi = v;
         else {
             unsigned char b = static_cast<unsigned char>((hi << 4) | v);
@@ -37,11 +37,10 @@ string hex_to_bytes(const string& hex) {
             hi = -1;
         }
     }
-    // если нечетное количество hex-цифр — последний полу-байт игнорируем
     return out;
 }
 
-// Читает файл целиком в одну строку
+// Читаем файлик
 string read_file_all(const string& path) {
     ifstream in(path);
     if (!in) return {};
@@ -50,14 +49,14 @@ string read_file_all(const string& path) {
     return ss.str();
 }
 
-// XOR-трансформация (и шифрование, и дешифрование)
+// Шифровка/расшифровка
 string xor_with_key(string data, unsigned int key) {
     key &= 0xFF;
     for (char& c : data) c = static_cast<char>(static_cast<unsigned char>(c) ^ key);
     return data;
 }
 
-// ---------- app ----------
+// приложуние
 int main() {
     int choice;
 
@@ -78,7 +77,7 @@ int main() {
                 unsigned int key;
 
                 cout << "Text: ";
-                cin.ignore(numeric_limits<streamsize>::max(), '\n'); // очистка буфера
+                cin.ignore(numeric_limits<streamsize>::max(), '\n'); // Чат гпт сказал очистить буфер, ну ладно
                 getline(cin, text);
 
                 cout << "Key (0-255): ";
@@ -121,7 +120,7 @@ int main() {
 
                 if (src == 1) {
                     cout << "Paste HEX string (example: 41 42 43 or 414243):\n";
-                    cin.ignore(numeric_limits<streamsize>::max(), '\n'); // очистка
+                    cin.ignore(numeric_limits<streamsize>::max(), '\n'); // опять очистка буфера
                     getline(cin, hexInput);
                 } else if (src == 2) {
                     string filename;
@@ -140,7 +139,7 @@ int main() {
                     break;
                 }
 
-                // теперь hex → байты и XOR-раскрытие ключом
+                // с hex в байты
                 unsigned int key;
                 cout << "Key (0-255): ";
                 cin >> key;
@@ -154,7 +153,7 @@ int main() {
                 string plain = xor_with_key(cipherBytes, key);
                 cout << "Decrypted text: " << plain << "\n\n";
 
-                // опционально: сохранить результат
+                // сохранение
                 char saveChoice;
                 cout << "Save decrypted text to file? (y/n): ";
                 cin >> saveChoice;
